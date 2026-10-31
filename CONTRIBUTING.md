@@ -4,7 +4,7 @@ Help make alert triage clearer without inventing information. Keep unfamiliar al
 
 ## Development
 
-Requires Go 1.26, Node.js 22.12 or newer, and npm. Docker is needed for browser/compatibility/container checks; Helm 3 is needed for chart checks.
+Requires Go 1.26, Node.js 22.12 or newer, and npm. CI and container builds use Node.js 24 LTS. Docker is needed for browser/compatibility/container checks; Helm 3 is needed for chart checks.
 
 ```bash
 make build
