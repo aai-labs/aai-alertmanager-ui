@@ -41,25 +41,12 @@ The official image is **`ghcr.io/aai-labs/aai-alertmanager-ui:v0.1.0`**. The Hel
 
 [Container package](https://github.com/orgs/aai-labs/packages/container/package/aai-alertmanager-ui) · [Helm package](https://github.com/orgs/aai-labs/packages/container/package/charts%2Faai-alertmanager-ui)
 
-**Public access pending:** the source repository is public, but the published registry packages are currently private. Anonymous pulls are not yet available. Once package visibility is set to Public, anyone can run the image without a GitHub account:
+Both packages are public. No GitHub account or registry login is required to download them.
 
 ```bash
-docker run --rm -p 127.0.0.1:8080:8080 \
-  -e DEMO=true ghcr.io/aai-labs/aai-alertmanager-ui:v0.1.0
-```
-
-### Build from source
-
-Until public pulls are enabled, you can try the application directly from the public source:
-
-```bash
-git clone https://github.com/aai-labs/aai-alertmanager-ui.git
-cd aai-alertmanager-ui
-docker build -t aai-alertmanager-ui:local .
-
 # Try the interface with fictional alerts. No cluster connection needed.
 docker run --rm -p 127.0.0.1:8080:8080 \
-  -e DEMO=true aai-alertmanager-ui:local
+  -e DEMO=true ghcr.io/aai-labs/aai-alertmanager-ui:v0.1.0
 ```
 
 Open **[localhost:8080](http://localhost:8080)**.
@@ -70,22 +57,20 @@ To connect an existing Alertmanager on a Docker network:
 docker run --rm -p 127.0.0.1:8080:8080 \
   --network monitoring \
   -e ALERTMANAGER_URL=http://alertmanager:9093 \
-  aai-alertmanager-ui:local
+  ghcr.io/aai-labs/aai-alertmanager-ui:v0.1.0
 ```
 
 Use your actual network and an Alertmanager address reachable from the container. For a public installation, reuse your authenticated reverse proxy and HTTPS. The default mode trusts every visitor as an operator; it does not add a login system.
 
-**Running Kubernetes?** A Helm chart is included:
+**Running Kubernetes?** Install the published Helm chart:
 
 ```bash
-helm upgrade --install alerts ./charts/aai-alertmanager-ui \
-  --namespace monitoring \
-  --set image.repository=YOUR_REGISTRY/aai-alertmanager-ui \
-  --set image.tag=YOUR_TAG \
+helm upgrade --install alerts oci://ghcr.io/aai-labs/charts/aai-alertmanager-ui \
+  --version 0.1.0 --namespace monitoring \
   --set alertmanager.url=http://YOUR_ALERTMANAGER_SERVICE.monitoring.svc:9093
 ```
 
-For this source-based installation, push a built image first and use an existing namespace. Once the registry packages are public, use the official GHCR image and OCI chart listed above instead of building your own.
+Use an existing namespace. Images support Linux **amd64 and arm64**. Standalone Linux/macOS binaries are available in [Releases](https://github.com/aai-labs/aai-alertmanager-ui/releases). To build from source, see [Contributing](CONTRIBUTING.md).
 
 See the **[installation guide](docs/installation.md)** for Docker Compose, Helm, standalone binaries, subpaths, authentication, and upgrades.
 

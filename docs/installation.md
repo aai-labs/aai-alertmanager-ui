@@ -4,41 +4,35 @@ The UI runs alongside an existing Alertmanager. It does not replace the Alertman
 
 Only `ALERTMANAGER_URL` is required. Prometheus is optional. No Kubernetes credentials or database are needed.
 
-## Build and run now
+## Docker
 
-Until the first release is published, build the image from this repository:
+```bash
+docker run --rm -p 127.0.0.1:8080:8080 \
+  -e ALERTMANAGER_URL=http://alertmanager:9093 \
+  --network monitoring \
+  ghcr.io/aai-labs/aai-alertmanager-ui:v0.1.0
+```
+
+This example assumes an existing Docker network named `monitoring` with an Alertmanager container named `alertmanager`. Substitute an address and network reachable from the UI container. `localhost` inside a container refers to that container, not your host.
+
+Open [localhost:8080](http://localhost:8080). For public exposure, put the UI behind your existing authenticated reverse proxy and HTTPS. Default operator mode permits all alerts and silence management; it does not implement a login page.
+
+To try synthetic examples without an upstream:
+
+```bash
+docker run --rm -p 127.0.0.1:8080:8080 -e DEMO=true \
+  ghcr.io/aai-labs/aai-alertmanager-ui:v0.1.0
+```
+
+Demo mode is for evaluation, not production monitoring. The image and Helm chart are public: no GitHub account is required to pull them. Publishing requires authenticated write access. Pin a release tag or digest in production. Images support Linux `amd64` and `arm64`; there is no floating `latest` tag.
+
+To build from source:
 
 ```bash
 git clone https://github.com/aai-labs/aai-alertmanager-ui.git
 cd aai-alertmanager-ui
 docker build -t aai-alertmanager-ui:local .
-docker run --rm -p 127.0.0.1:8080:8080 \
-  -e ALERTMANAGER_URL=http://alertmanager:9093 \
-  --network monitoring \
-  aai-alertmanager-ui:local
 ```
-
-This example assumes an existing Docker network named `monitoring` with an Alertmanager container named `alertmanager`. Substitute an address and network reachable from the UI container. `localhost` inside a container refers to that container, not your host.
-
-Open [localhost:8080](http://localhost:8080). For public exposure, put the UI behind your existing authenticated reverse proxy and HTTPS. The default operator mode permits all alerts and silence management; it does not implement a login page.
-
-To try synthetic examples without an upstream:
-
-```bash
-docker run --rm -p 127.0.0.1:8080:8080 -e DEMO=true aai-alertmanager-ui:local
-```
-
-Demo mode is for evaluation and screenshots, not production monitoring.
-
-## Published image
-
-Once a release exists in [GitHub Releases](https://github.com/aai-labs/aai-alertmanager-ui/releases), replace `aai-alertmanager-ui:local` with its versioned image, for example:
-
-```text
-ghcr.io/aai-labs/aai-alertmanager-ui:v0.1.0
-```
-
-Public packages can be pulled without a GitHub account. Pin a release tag or digest in production. The release workflow produces Linux `amd64` and `arm64` images; it does not publish a floating `latest` tag.
 
 ## Docker Compose
 
@@ -52,7 +46,7 @@ Set `PROMETHEUS_URL` to add pending alerts and rule values. Set `READ_ONLY=true`
 
 ## Kubernetes / Helm
 
-Use the local chart before the first published release. Build and push an image to a registry your cluster can pull, then supply that image and your existing Alertmanager service URL:
+To use a locally checked-out chart with your own image, build and push the image to a registry your cluster can pull, then supply that image and your existing Alertmanager service URL:
 
 ```bash
 helm upgrade --install alerts ./charts/aai-alertmanager-ui \
@@ -62,7 +56,7 @@ helm upgrade --install alerts ./charts/aai-alertmanager-ui \
   --set alertmanager.url=http://YOUR_ALERTMANAGER_SERVICE.monitoring.svc:9093
 ```
 
-After publication, install the OCI chart:
+For the published release, install the OCI chart:
 
 ```bash
 helm upgrade --install alerts oci://ghcr.io/aai-labs/charts/aai-alertmanager-ui \
