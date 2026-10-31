@@ -16,3 +16,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # Keep the selected Node LTS major; review LTS upgrades deliberately.
+      - dependency-name: node
+        update-types: [version-update:semver-major]
