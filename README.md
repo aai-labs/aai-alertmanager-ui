@@ -35,7 +35,22 @@ A failing storage layer, a crashing application, and a silenced staging alert sh
 
 ## Quick start
 
-**Initial release preparation:** build from source today. The release and registry links above will become useful after the first publication; they are not a claim that an image is already available.
+### GitHub Container Registry
+
+The official image is **`ghcr.io/aai-labs/aai-alertmanager-ui:v0.1.0`**. The Helm chart is **`oci://ghcr.io/aai-labs/charts/aai-alertmanager-ui`**, version `0.1.0`.
+
+[Container package](https://github.com/orgs/aai-labs/packages/container/package/aai-alertmanager-ui) · [Helm package](https://github.com/orgs/aai-labs/packages/container/package/charts%2Faai-alertmanager-ui)
+
+**Public access pending:** the source repository is public, but the published registry packages are currently private. Anonymous pulls are not yet available. Once package visibility is set to Public, anyone can run the image without a GitHub account:
+
+```bash
+docker run --rm -p 127.0.0.1:8080:8080 \
+  -e DEMO=true ghcr.io/aai-labs/aai-alertmanager-ui:v0.1.0
+```
+
+### Build from source
+
+Until public pulls are enabled, you can try the application directly from the public source:
 
 ```bash
 git clone https://github.com/aai-labs/aai-alertmanager-ui.git
@@ -70,7 +85,7 @@ helm upgrade --install alerts ./charts/aai-alertmanager-ui \
   --set alertmanager.url=http://YOUR_ALERTMANAGER_SERVICE.monitoring.svc:9093
 ```
 
-Push a built image first and use an existing namespace. After publication, images will be available at `ghcr.io/aai-labs/aai-alertmanager-ui`, with the Helm chart at `oci://ghcr.io/aai-labs/charts/aai-alertmanager-ui`.
+For this source-based installation, push a built image first and use an existing namespace. Once the registry packages are public, use the official GHCR image and OCI chart listed above instead of building your own.
 
 See the **[installation guide](docs/installation.md)** for Docker Compose, Helm, standalone binaries, subpaths, authentication, and upgrades.
 
