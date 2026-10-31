@@ -1,0 +1,47 @@
+/* AAI Labs — Spacing, radius, shadow, layout tokens */
+:root {
+  /* Spacing scale (4px base) */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+  --space-32: 128px;
+
+  /* Radius — restrained. Cards ~14px, buttons/inputs ~10px, pills fully round */
+  --radius-none: 0;
+  --radius-sm: 6px;
+  --radius-md: 10px; /* buttons, inputs */
+  --radius-lg: 14px; /* cards */
+  --radius-xl: 20px; /* large panels / chat window */
+  --radius-pill: 999px; /* mono badges */
+
+  /* Borders */
+  --border-width: 1px;
+  --border-width-strong: 1.5px;
+
+  /* Shadows — soft, low, neutral. No colored glows. */
+  --shadow-xs: 0 1px 2px rgba(10, 10, 10, 0.05);
+  --shadow-sm:
+    0 1px 3px rgba(10, 10, 10, 0.06), 0 1px 2px rgba(10, 10, 10, 0.04);
+  --shadow-md:
+    0 4px 16px rgba(10, 10, 10, 0.06), 0 1px 3px rgba(10, 10, 10, 0.05);
+  --shadow-lg:
+    0 18px 48px rgba(10, 10, 10, 0.1), 0 4px 12px rgba(10, 10, 10, 0.06);
+  --shadow-focus: 0 0 0 3px rgba(0, 0, 240, 0.18);
+
+  /* Layout */
+  --container-max: 1200px;
+  --container-pad: 32px;
+  --duration-fast: 120ms; /* @kind other */
+  --duration-base: 200ms; /* @kind other */
+  --ease: cubic-bezier(0.2, 0, 0, 1); /* @kind other */
+}

@@ -1,0 +1,64 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.18.6
+      - name: Frontend tests and production build
+        working-directory: web
+        run: |
+          npm ci
+          npm audit --audit-level=high
+          npm test
+          npm run build
+      - name: Backend tests and embedded build
+        run: |
+          cp -R web/dist/. internal/server/ui/
+          go test -race ./...
+          go vet ./...
+          mkdir -p .build
+          CGO_ENABLED=0 go build -trimpath -o .build/alertmanager-ui ./cmd/alertmanager-ui
+      - name: Browser interaction tests
+        working-directory: web
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+      - name: Chart validation
+        run: |
+          make helm-check
+          helm template alerts charts/aai-alertmanager-ui --set alertmanager.url=http://alertmanager:9093 --set ingress.enabled=true --set ingress.host=alerts.example.com --set config.existingSecret=alerts-config > /dev/null
+      - name: Real Alertmanager compatibility
+        run: python3 scripts/compatibility.py --binary .build/alertmanager-ui --versions 0.27.0 0.34.1
+      - name: Container build
+        run: docker build -t alerts:ci .
+      - name: Container vulnerability scan
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: alerts:ci
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "replicaCount": {"type": "integer", "minimum": 1},
+    "readOnly": {"type": ["boolean", "null"]},
+    "basePath": {"type": "string"},
+    "alertmanager": {"type": "object", "properties": {"url": {"type": "string"}}},
+    "prometheus": {"type": "object", "properties": {"url": {"type": "string"}}},
+    "extraEnv": {"type": "array"},
+    "extraVolumes": {"type": "array"},
+    "extraVolumeMounts": {"type": "array"}
+  }
+}

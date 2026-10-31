@@ -1,0 +1,1 @@
+A focused, open-source UI for Prometheus Alertmanager. Prioritize critical infrastructure alerts, reduce noise, and manage silences with your existing setup. One container, optional Prometheus enrichment, and namespace-scoped tenant access.

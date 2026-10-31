@@ -1,0 +1,10 @@
+Alerts UI installed. No Alertmanager rules, routing, or storage were modified.
+
+{{- if .Values.ingress.enabled }}
+URL: {{ if .Values.ingress.tls }}https{{ else }}http{{ end }}://{{ .Values.ingress.host }}{{ .Values.ingress.path }}
+Ensure the ingress has authentication before exposing operator access.
+{{- else }}
+To access locally:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "alerts.fullname" . }} 8080:{{ .Values.service.port }}
+Then open http://localhost:8080{{ .Values.basePath }}/
+{{- end }}

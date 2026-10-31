@@ -1,0 +1,40 @@
+replicaCount: 1
+image:
+  repository: ghcr.io/aai-labs/aai-alertmanager-ui
+  tag: "" # Defaults to Chart.appVersion prefixed with v.
+  digest: "" # Optional sha256 digest; takes precedence over tag.
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+alertmanager:
+  url: "" # Required: existing Alertmanager service, e.g. http://alertmanager.monitoring:9093
+prometheus:
+  url: "" # Optional; adds pending alerts and rule values.
+readOnly: null # Unset preserves config-file setting; application default is false.
+basePath: "" # e.g. /alerts; configure ingress.path to match.
+config:
+  existingSecret: "" # Optional Secret containing the configuration file.
+  key: config.yaml
+extraEnv: [] # Kubernetes EnvVar entries; supports valueFrom.secretKeyRef.
+extraVolumes: [] # For CA / credentials files referenced by config.
+extraVolumeMounts: []
+service:
+  port: 8080
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
+  path: /
+  tls: []
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

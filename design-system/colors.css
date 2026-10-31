@@ -1,0 +1,52 @@
+/* AAI Labs — Color tokens */
+:root {
+  /* Brand blue — the single electric accent (#0000F0) */
+  --blue-50:  #f0f0ff;   /* lilac tint — selected cards, wash backgrounds */
+  --blue-100: #e5e5ff;
+  --blue-200: #c6c7f8;
+  --blue-400: #3d3df5;
+  --blue-500: #1414f2;
+  --blue-600: #0000f0;   /* PRIMARY — logo, buttons, badges, numerals */
+  --blue-700: #0a0dc2;   /* pressed / deep chat bubble */
+  --blue-800: #0a0a8f;
+
+  /* Ink & neutrals */
+  --ink:      #0a0a0a;   /* near-black display + headings */
+  --ink-2:    #1a1a1c;
+  --grey-700: #45464b;   /* body copy on light */
+  --grey-600: #6b6c70;
+  --grey-500: #929397;   /* muted / secondary text */
+  --grey-400: #b4b5b8;
+  --grey-300: #d5d6d9;
+  --grey-200: #e6e7ea;   /* borders, dividers */
+  --grey-100: #f1f2f4;   /* hairline fills */
+  --grey-50:  #f8f9fa;   /* subtle section background */
+  --white:    #ffffff;
+
+  /* Semantic status (sparingly used) */
+  --success: #0f9d58;
+  --warning: #d98a00;
+  --danger:  #d43535;
+
+  /* ---- Semantic aliases ---- */
+  --color-accent:        var(--blue-600);
+  --color-accent-hover:  var(--blue-700);
+  --color-accent-tint:   var(--blue-50);
+  --color-on-accent:     var(--white);
+
+  --text-strong:  var(--ink);
+  --text-body:    var(--grey-700);
+  --text-muted:   var(--grey-500);
+  --text-accent:  var(--blue-600);
+  --text-on-dark: var(--white);
+
+  --surface-page:   var(--white);
+  --surface-subtle: var(--grey-50);
+  --surface-card:   var(--white);
+  --surface-tint:   var(--blue-50);
+  --surface-ink:    var(--ink);
+
+  --border-subtle:  var(--grey-200);
+  --border-strong:  var(--ink);
+  --border-accent:  var(--blue-600);
+}

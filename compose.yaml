@@ -1,0 +1,16 @@
+services:
+  alerts:
+    build: .
+    image: aai-alertmanager-ui:local
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      ALERTMANAGER_URL: ${ALERTMANAGER_URL:?Set ALERTMANAGER_URL to an address reachable from the container}
+      PROMETHEUS_URL: ${PROMETHEUS_URL:-}
+      READ_ONLY: ${READ_ONLY:-false}
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped

@@ -1,0 +1,11 @@
+AAI Alertmanager UI
+Copyright 2026 AAI Labs and contributors.
+
+This project is not affiliated with or endorsed by the Prometheus project.
+Prometheus and Alertmanager are names of their respective projects.
+
+The interface uses DM Sans, IBM Plex Sans, and IBM Plex Mono font assets.
+Their SIL Open Font License notices are included in design-system/.
+Selected design tokens were provided for use by AAI Labs; no AAI Labs logo is included.
+
+Runtime dependency licenses and attribution are included in THIRD_PARTY_NOTICES.md.

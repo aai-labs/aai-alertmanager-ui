@@ -1,0 +1,13 @@
+apiVersion: v2
+name: aai-alertmanager-ui
+description: A focused interface for your existing Prometheus Alertmanager
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/aai-labs/aai-alertmanager-ui
+sources:
+  - https://github.com/aai-labs/aai-alertmanager-ui
+keywords:
+  - alertmanager
+  - prometheus
+  - monitoring

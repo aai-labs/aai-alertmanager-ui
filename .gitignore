@@ -1,0 +1,21 @@
+# Private discovery artifacts and local mockups are not publication material.
+/review/
+/cluster-attention*.html
+/node_modules/
+/web/node_modules/
+/web/dist/
+/web/test-results/
+/web/playwright-report/
+/.build/
+/dist/
+/internal/server/ui/*
+!/internal/server/ui/placeholder.txt
+.env
+.env.*
+!.env.example
+*.local.yaml
+*.local.yml
+*.tgz
+.DS_Store
+
+*.tsbuildinfo
