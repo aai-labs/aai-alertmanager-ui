@@ -2,9 +2,12 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
+	"github.com/aai-labs/aai-alertmanager-ui/internal/incidents"
+	"github.com/aai-labs/aai-alertmanager-ui/internal/triage"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -14,6 +17,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aai-labs/aai-alertmanager-ui/internal/config"
@@ -24,6 +28,24 @@ import (
 var assets embed.FS
 
 type Server struct {
+	resourceCacheMu  sync.Mutex
+	resourceCache    map[string]resourceCacheEntry
+	workloadsCacheMu sync.Mutex
+	workloadsCache   map[string]workloadsCacheEntry
+
+	analyticsCacheMu sync.Mutex
+	analyticsCache   map[string]analyticsCacheEntry
+	store            *incidents.Store
+	triageClient     *triage.Client
+	cancel           context.CancelFunc
+	workers          sync.WaitGroup
+	workflowMu       sync.Mutex
+	sourceState      string
+	lastSuccess      time.Time
+	triageState      string
+	webhookToken     string
+	tempDir          string
+
 	config   config.Config
 	am, prom *source
 	logger   *slog.Logger
@@ -31,6 +53,7 @@ type Server struct {
 }
 
 func New(c config.Config, logger *slog.Logger) (*Server, error) {
+	c.Defaults()
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
@@ -49,7 +72,11 @@ func New(c config.Config, logger *slog.Logger) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{config: c, am: am, prom: prom, logger: logger, assets: ui}, nil
+	s := &Server{config: c, am: am, prom: prom, logger: logger, assets: ui, sourceState: "unknown", triageState: "disabled"}
+	if err := s.initEnhanced(); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 func jsonResponse(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -105,7 +132,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			priorities = append(priorities, rule)
 		}
-		jsonResponse(w, 200, map[string]any{"readOnly": s.config.ReadOnly || s.config.Demo || !a.operator, "tenantMode": s.config.Tenancy.Enabled && !a.operator, "identity": a.identity, "namespaces": a.namespaceList(), "prometheusEnabled": s.config.Prometheus.URL != "" || s.config.Demo, "demo": s.config.Demo, "priorities": priorities})
+		jsonResponse(w, 200, map[string]any{"readOnly": s.config.ReadOnly || s.config.Demo || !a.operator, "tenantMode": s.config.Tenancy.Enabled && !a.operator, "identity": a.identity, "namespaces": a.namespaceList(), "prometheusEnabled": s.config.Prometheus.URL != "" || s.config.Demo, "demo": s.config.Demo, "priorities": priorities, "analyticsEnabled": s.config.Prometheus.URL != "" || s.config.Demo, "resourcesEnabled": s.config.Prometheus.URL != "" || s.config.Demo, "workloadsEnabled": s.config.Prometheus.URL != "" || s.config.Demo, "incidentsEnabled": s.store != nil, "triageEnabled": s.config.Triage.Enabled && a.operator, "followUpEnabled": s.config.FollowUp.URL != "" && a.operator})
+	case route == "/api/resources" && r.Method == "GET":
+		s.resources(w, r, a)
+	case route == "/api/workloads" && r.Method == "GET":
+		s.workloads(w, r, a)
+	case route == "/api/analytics" && r.Method == "GET":
+		s.analytics(w, r, a)
+	case strings.HasPrefix(route, "/api/incidents") || strings.HasPrefix(route, "/api/deliveries/") || route == "/api/triage/status":
+		s.incidentAPI(w, r, a, route)
 	case route == "/api/alerts" && r.Method == "GET":
 		alerts, err := s.getAlerts(r, a)
 		if err != nil {

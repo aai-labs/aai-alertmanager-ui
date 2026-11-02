@@ -1,12 +1,16 @@
 const base = new URL("./", document.baseURI);
-export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+export async function api<T>(
+  path: string,
+  init?: RequestInit,
+  timeoutMs = 15000,
+): Promise<T> {
   const res = await fetch(new URL("api/" + path, base), {
     ...init,
     headers: {
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
     },
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
     let error = `Request failed (${res.status})`;

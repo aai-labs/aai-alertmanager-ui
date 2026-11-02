@@ -113,3 +113,7 @@ The browser uses the UI server's same-origin `/api/*` endpoints. These are an ap
 All paths use `BASE_PATH` when configured. Requests have a 10-second upstream timeout, a 1 MiB mutation-body limit, and a 32 MiB upstream-response limit. Mutation POSTs require JSON; cross-origin and browser cross-site mutations are rejected. Upstream credentials, cookies, and caller-provided query parameters are not forwarded from the browser. Upstream errors return a safe message, not raw backend response bodies.
 
 Silence preview uses Go's RE2-compatible, fully anchored matching, including absent labels as empty strings. Preview counts only currently returned alerts; a silence may also match future alerts. The application has no durable history and cannot infer recovery or infrastructure health from an empty result.
+
+## Optional analytics and incident workflows
+
+See [enhanced mode](enhanced-mode.md) for the `analytics`, `enhanced`, `triage`, and `followUp` sections, secret-file examples, persistence requirements, and API semantics. These capabilities are opt-in and do not change upstream alert routing.

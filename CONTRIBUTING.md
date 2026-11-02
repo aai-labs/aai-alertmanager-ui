@@ -47,3 +47,9 @@ Never commit production alert snapshots, tenant names, tokens, kubeconfig files,
 ## Releases
 
 See [the release procedure](docs/deployment-cluster.md#publish-a-release). Release workflows publish packages only when manually dispatched; normal CI does not publish or deploy.
+
+The module selects Go 1.27.3 for local builds to match the patched Go 1.27 release line used by CI and containers. Let Go download the selected toolchain, or install an equally recent patched release.
+
+## Agent workflow
+
+Start with [AGENTS.md](AGENTS.md), then use [docs/INDEX.md](docs/INDEX.md) for task-specific context. The core guidance was installed with the upstream `scripts/install.sh` from [aai-labs/ai-starter](https://github.com/aai-labs/ai-starter/tree/fb8d0ace8367edc6d99ba2f03c3b914dc90bbab4) and bootstrapped on 2026-11-02. It is tailored to this Go/React application; optional plugins and skills were not installed. Python/Next.js defaults and unrelated starter history were removed.

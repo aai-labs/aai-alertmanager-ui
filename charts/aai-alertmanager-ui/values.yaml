@@ -38,3 +38,11 @@ podAnnotations: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Enhanced workflow mode remains optional. Use one replica and a persistent volume.
+enhanced:
+  enabled: false
+  persistence:
+    existingClaim: ""
+    storageClass: ""
+    size: 1Gi

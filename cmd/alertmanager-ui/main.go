@@ -25,6 +25,8 @@ func main() {
 		logger.Error("startup failed", "error", err)
 		os.Exit(1)
 	}
+	defer app.Close()
+
 	httpServer := &http.Server{Addr: c.ListenAddr, Handler: app, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

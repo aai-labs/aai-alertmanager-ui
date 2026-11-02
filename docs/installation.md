@@ -117,3 +117,7 @@ The frontend is embedded; no separate web server is required. The default listen
 Keep your Alertmanager untouched. Change only the UI image tag or binary, and check the UI's source status and alert counts after rollout. In Helm, `helm rollback alerts REVISION --namespace monitoring` restores an earlier UI release. Changing UI versions does not undo silences you intentionally created in Alertmanager.
 
 See [cluster rollout](deployment-cluster.md) for the first installation checklist and [compatibility](compatibility.md) for upstream coverage.
+
+## Persistent incident workspace (next-version source)
+
+Add `--set enhanced.enabled=true` when installing a build containing the enhanced workspace. The chart creates a retained 1Gi PVC and uses one replica with Recreate upgrades. Existing `v0.1.0` artifacts do not include this feature. See [enhanced-mode installation and backup](enhanced-mode.md).

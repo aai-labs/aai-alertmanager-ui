@@ -28,6 +28,12 @@ export type Context = {
   identity: string;
   namespaces: string[] | null;
   prometheusEnabled: boolean;
+  analyticsEnabled?: boolean;
+  resourcesEnabled?: boolean;
+  workloadsEnabled?: boolean;
+  incidentsEnabled?: boolean;
+  triageEnabled?: boolean;
+  followUpEnabled?: boolean;
   demo: boolean;
   priorities: Priority[];
 };

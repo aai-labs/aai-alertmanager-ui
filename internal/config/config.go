@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -40,7 +41,39 @@ type Tenancy struct {
 	OperatorUsers     []string            `yaml:"operatorUsers"`
 	OperatorGroups    []string            `yaml:"operatorGroups"`
 }
+type Analytics struct {
+	CoverageQuery string `yaml:"coverageQuery"`
+}
+type Enhanced struct {
+	Enabled       bool   `yaml:"enabled"`
+	DatabasePath  string `yaml:"databasePath"`
+	RetentionDays int    `yaml:"retentionDays"`
+}
+type CatalogEntry struct {
+	ID          string `yaml:"id" json:"id"`
+	Description string `yaml:"description" json:"description"`
+}
+type Triage struct {
+	Enabled          bool           `yaml:"enabled"`
+	Apply            bool           `yaml:"apply"`
+	APIKeyFile       string         `yaml:"apiKeyFile"`
+	Model            string         `yaml:"model"`
+	MonthlyBudgetUSD float64        `yaml:"monthlyBudgetUSD"`
+	PolicyVersion    string         `yaml:"policyVersion"`
+	Policy           string         `yaml:"policy"`
+	Teams            []CatalogEntry `yaml:"teams"`
+	Runbooks         []CatalogEntry `yaml:"runbooks"`
+}
+type FollowUp struct {
+	URL             string `yaml:"url"`
+	BearerTokenFile string `yaml:"bearerTokenFile"`
+	PublicURL       string `yaml:"publicURL"`
+}
 type Config struct {
+	Analytics    Analytics  `yaml:"analytics"`
+	Enhanced     Enhanced   `yaml:"enhanced"`
+	Triage       Triage     `yaml:"triage"`
+	FollowUp     FollowUp   `yaml:"followUp"`
 	Alertmanager Source     `yaml:"alertmanager"`
 	Prometheus   Source     `yaml:"prometheus"`
 	ListenAddr   string     `yaml:"listenAddr"`
@@ -53,6 +86,7 @@ type Config struct {
 
 func Load() (Config, error) {
 	c := Config{ListenAddr: ":8080"}
+	c.Defaults()
 	if name := os.Getenv("CONFIG_FILE"); name != "" {
 		f, e := os.Open(name)
 		if e != nil {
@@ -65,12 +99,12 @@ func Load() (Config, error) {
 			return c, fmt.Errorf("parse config: %w", e)
 		}
 	}
-	for key, dest := range map[string]*string{"ALERTMANAGER_URL": &c.Alertmanager.URL, "PROMETHEUS_URL": &c.Prometheus.URL, "LISTEN_ADDR": &c.ListenAddr, "BASE_PATH": &c.BasePath} {
+	for key, dest := range map[string]*string{"ALERTMANAGER_URL": &c.Alertmanager.URL, "PROMETHEUS_URL": &c.Prometheus.URL, "LISTEN_ADDR": &c.ListenAddr, "BASE_PATH": &c.BasePath, "DATABASE_PATH": &c.Enhanced.DatabasePath} {
 		if value, ok := os.LookupEnv(key); ok {
 			*dest = value
 		}
 	}
-	for key, dest := range map[string]*bool{"READ_ONLY": &c.ReadOnly, "DEMO": &c.Demo} {
+	for key, dest := range map[string]*bool{"READ_ONLY": &c.ReadOnly, "DEMO": &c.Demo, "ENHANCED": &c.Enhanced.Enabled} {
 		if value, ok := os.LookupEnv(key); ok {
 			b, e := strconv.ParseBool(value)
 			if e != nil {
@@ -82,7 +116,68 @@ func Load() (Config, error) {
 	c.BasePath = strings.TrimRight(c.BasePath, "/")
 	return c, c.Validate()
 }
+func (c *Config) Defaults() {
+	if c.Enhanced.DatabasePath == "" {
+		c.Enhanced.DatabasePath = "/data/alerts.db"
+	}
+	if c.Enhanced.RetentionDays == 0 {
+		c.Enhanced.RetentionDays = 90
+	}
+	if c.Triage.Model == "" {
+		c.Triage.Model = "typesafe/jev-1.13"
+	}
+	if c.Triage.PolicyVersion == "" {
+		c.Triage.PolicyVersion = "1"
+	}
+	if c.Triage.MonthlyBudgetUSD == 0 {
+		c.Triage.MonthlyBudgetUSD = 10
+	}
+}
 func (c Config) Validate() error {
+	if c.Enhanced.RetentionDays < 0 || c.Enhanced.RetentionDays > 3650 {
+		return errors.New("enhanced retentionDays must be 1..3650")
+	}
+	if c.Triage.Enabled {
+		if !c.Enhanced.Enabled || c.Demo {
+			return errors.New("triage requires enhanced mode and cannot send demo data")
+		}
+		if c.Triage.APIKeyFile == "" {
+			return errors.New("triage.apiKeyFile is required")
+		}
+		if c.Triage.Model != "" && c.Triage.Model != "typesafe/jev-1.13" && c.Triage.Model != "typesafe/jev-1.14" {
+			return errors.New("triage.model must be a supported pinned Jev version")
+		}
+		if math.IsNaN(c.Triage.MonthlyBudgetUSD) || math.IsInf(c.Triage.MonthlyBudgetUSD, 0) || c.Triage.MonthlyBudgetUSD < 0 || c.Triage.MonthlyBudgetUSD > 1000 {
+			return errors.New("triage budget must be positive and at most $1000")
+		}
+		if len(c.Triage.Policy) > 16000 || len(c.Triage.Teams) > 30 || len(c.Triage.Runbooks) > 30 {
+			return errors.New("triage catalog or policy exceeds limit")
+		}
+		for _, entries := range [][]CatalogEntry{c.Triage.Teams, c.Triage.Runbooks} {
+			seen := map[string]bool{}
+			for _, e := range entries {
+				if !regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`).MatchString(e.ID) || e.ID == "unknown" || seen[e.ID] || len(e.Description) > 2000 {
+					return errors.New("invalid or duplicate triage catalog entry")
+				}
+				seen[e.ID] = true
+			}
+		}
+	}
+	if c.FollowUp.URL != "" {
+		if !c.Enhanced.Enabled || c.Demo {
+			return errors.New("followUp requires enhanced mode and cannot send demo events")
+		}
+		for _, value := range []string{c.FollowUp.URL, c.FollowUp.PublicURL} {
+			u, e := url.Parse(value)
+			if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" {
+				return errors.New("followUp URL and publicURL must be HTTPS without credentials or fragments")
+			}
+		}
+		if c.FollowUp.BearerTokenFile == "" {
+			return errors.New("followUp.bearerTokenFile is required")
+		}
+	}
+
 	if !c.Demo && c.Alertmanager.URL == "" {
 		return errors.New("ALERTMANAGER_URL or alertmanager.url is required (or set DEMO=true)")
 	}

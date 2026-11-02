@@ -1,0 +1,21 @@
+# Apply with the next published image version containing enhanced mode.
+# Do not deploy these settings with v0.1.0: that release lacks these features.
+# Keep ingress disabled for initial read-only validation through port-forwarding.
+replicaCount: 1
+alertmanager:
+  url: http://kube-prometheus-stack-alertmanager.monitoring.svc:9093
+prometheus:
+  url: http://kube-prometheus-stack-prometheus.monitoring.svc:9090
+readOnly: true
+enhanced:
+  enabled: true
+  persistence:
+    size: 1Gi
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+ingress:
+  enabled: false
