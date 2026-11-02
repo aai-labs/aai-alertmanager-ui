@@ -1,10 +1,14 @@
 name: Release
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag (e.g. v0.1.0); CI must have passed for its commit
-        required: true
+        description: Existing release tag to retry (leave empty to release main)
+        required: false
         type: string
 permissions:
   contents: read
@@ -12,7 +16,55 @@ concurrency:
   group: release
   cancel-in-progress: false
 jobs:
+  version:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.version.outputs.sha }}
+      published: ${{ steps.version.outputs.published }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Reserve version for tested commit
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          if [ -n "$REQUESTED_TAG" ]; then
+            [[ "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+            tag="$REQUESTED_TAG"
+            sha=$(git rev-parse "refs/tags/$tag^{commit}")
+            git merge-base --is-ancestor "$sha" HEAD
+          else
+            python3 scripts/release-version.py > /tmp/release-version
+            source /tmp/release-version
+            sha=$(git rev-parse HEAD)
+            if [ "$create" = true ]; then
+              gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$sha"
+            fi
+          fi
+          published=false
+          releases=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100")
+          if jq -e --arg tag "$tag" '.[][] | select(.tag_name == $tag and .draft == false)' <<< "$releases" > /dev/null; then
+            published=true
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "published=$published" >> "$GITHUB_OUTPUT"
   release:
+    needs: version
+    if: needs.version.outputs.published != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -22,13 +74,13 @@ jobs:
       attestations: write
       artifact-metadata: write
     env:
-      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_TAG: ${{ needs.version.outputs.tag }}
     steps:
       - name: Validate version
         run: '[[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ inputs.tag }}
+          ref: ${{ needs.version.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -107,7 +159,9 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/aai-labs/aai-alertmanager-ui:${{ inputs.tag }}
+          tags: |
+            ghcr.io/aai-labs/aai-alertmanager-ui:${{ needs.version.outputs.tag }}
+            ghcr.io/aai-labs/aai-alertmanager-ui:latest
           sbom: true
           provenance: mode=max
       - name: Publish Helm package
@@ -116,7 +170,13 @@ jobs:
         run: |
           printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           helm push "dist/aai-alertmanager-ui-${RELEASE_TAG#v}.tgz" oci://ghcr.io/aai-labs/charts
-      - name: Create draft GitHub release
+      - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --generate-notes dist/*
+        run: |
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+            gh release edit "$RELEASE_TAG" --draft=false --latest
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes --latest dist/*
+          fi

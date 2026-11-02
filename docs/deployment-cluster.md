@@ -38,15 +38,19 @@ If the UI fails, revert its ingress route or Helm release. Alertmanager continue
 
 ## Publish a release
 
-1. Ensure CI passes, review screenshots and documentation for private data, and review the dependency scan.
-2. Tag the reviewed commit with a version such as `v0.1.0` and push the tag.
-3. Run the **Release** workflow manually with that existing tag.
-4. The workflow tests again, scans the image, publishes versioned images and the OCI Helm chart, and creates a **draft** GitHub release with binaries, checksums, an SBOM, and provenance.
-5. Review the draft, set the GHCR image/chart packages to public if this is their first publication, verify anonymous pulls, and publish the release.
+Merging into `main` automatically publishes after the **CI** push workflow succeeds. Pull requests, forks, and failed/cancelled CI runs cannot publish. Release checks out that exact tested commit, runs its checks again, and scans the image before publication.
 
-The downloadable `image-linux-amd64.spdx.json` describes the locally scanned Linux amd64 image. The published multiarch image also carries BuildKit-generated SBOM and provenance attestations for its platform builds.
+The serialized **Release** workflow reserves the next patch tag (`v0.1.0` → `v0.1.1`). An existing tag for the same commit is reused on retries. It publishes:
 
-The workflow publishes packages before creating the draft release. Running it is the publication action; creating a tag alone does not publish packages. It intentionally does not deploy to a cluster. If publication partially succeeds, inspect the completed steps before rerunning; never overwrite a version already consumed by users with different content.
+- Linux amd64/arm64 images at `ghcr.io/aai-labs/aai-alertmanager-ui:VERSION` and `:latest`.
+- The matching OCI Helm chart with its default image version set to that release.
+- A public GitHub release with Linux/macOS amd64/arm64 binaries, Helm archive, checksums, software inventory, and artifact attestations.
+
+This uses the successful-CI `workflow_run` event, rather than relying on a bot-created tag to start another workflow. No personal access token is required. The workflow needs repository contents/package write and attestation permissions. First-time GHCR packages may require setting public visibility; verify anonymous pulls.
+
+To recover a failed publication, rerun the failed **Release** run, or dispatch **Release** from `main` with the reserved tag. Leave the tag empty to release the current main commit. A completed public release is skipped. Partial publication reuses the same commit/tag; do not move an existing tag to different code. The `latest` tag tracks the last publication; use an immutable version for deployments.
+
+The downloadable `image-linux-amd64.spdx.json` describes the scanned Linux amd64 image. Multiarch images also carry BuildKit SBOM and provenance attestations. Images/chart publication precedes the final public GitHub release, so partial failure may leave packages published. Production rollout remains an operator action.
 
 ## Enhanced workspace preview
 
