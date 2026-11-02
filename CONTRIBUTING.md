@@ -46,7 +46,7 @@ Never commit production alert snapshots, tenant names, tokens, kubeconfig files,
 
 ## Releases
 
-See [the release procedure](docs/deployment-cluster.md#publish-a-release). Release workflows publish packages only when manually dispatched; normal CI does not publish or deploy.
+See [the release procedure](docs/deployment-cluster.md#publish-a-release). Successful CI after a merge to `main` automatically publishes the next patch release, images, and Helm chart. The Release workflow can also be dispatched for recovery. Production deployment remains an operator action.
 
 The module selects Go 1.27.3 for local builds to match the patched Go 1.27 release line used by CI and containers. Let Go download the selected toolchain, or install an equally recent patched release.
 

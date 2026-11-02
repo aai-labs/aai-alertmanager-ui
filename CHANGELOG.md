@@ -4,6 +4,8 @@
 
 ### Added
 
+- Automatic versioned releases, multi-platform images, Helm packages, and standalone downloads after successful CI on main.
+
 - Namespace alert analytics with UTC daily heatmaps, recurrence, and explicit source-coverage gaps.
 - Optional persistent incident workspace with ownership, review dates, audit history, recurrence, and namespace grouping.
 - Optional budgeted Jev triage and durable due-review webhooks; existing Alertmanager paging remains independent.
