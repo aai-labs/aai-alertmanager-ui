@@ -2,6 +2,15 @@
 
 Use behavioral checks proportional to the change. Prioritize authorization, calculations, persistence, and user-visible outcomes; do not write tests that only mirror implementation or add elaborate fixtures for trivial presentation changes.
 
+## What makes a test valuable
+
+- Prove a user-visible outcome or a public contract. Prefer integration tests for behavior crossing HTTP, authorization, storage, or workflow boundaries; use unit tests for calculations and invariants that add distinct coverage.
+- Arrange the relevant state explicitly, perform the user/domain action, and assert the observable result near that action. Test names should describe behavior. Helpers should remove transport/setup noise without hiding the scenario or assertions.
+- Use real internal services and temporary databases where practical. Mock external boundaries to exercise failures deterministically; do not mock away the behavior being tested.
+- For frontend changes, prioritize user journeys and visible states over private hooks, reducer implementation details, incidental markup, or snapshot-heavy assertions. Use small page objects when shared interactions justify them, not as a mandatory layer.
+- For permission tests, assert that authorized data is actually returned before checking redaction. For rejected writes, verify stored state remains unchanged as well as the HTTP status. Test names must describe scenarios actually exercised (for example, redirect protection needs a real redirect response).
+- Cover meaningful failure, permission, conflict, and recovery cases alongside success. A regression test should fail when the bug is reintroduced. Avoid ceremonial tests, duplicated implementation logic, fragile timing, and coverage targets that reward assertion volume over confidence.
+
 ## Commands
 
 Run from the repository root with Go's selected toolchain and Node.js 24 (minimum 22.12):

@@ -504,3 +504,49 @@ func TestPagePrioritizesCriticalBeyondFirst200(t *testing.T) {
 		t.Fatal("closed not last", page, e)
 	}
 }
+
+func TestPreparedDeliveryUsesCurrentOwnerAndRejectsRescheduledReview(t *testing.T) {
+	s := openTest(t)
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	if err := s.Observe([]Member{fixture("a", "Broken", "team", "warning")}, now); err != nil {
+		t.Fatal(err)
+	}
+	i := one(t, s)
+	due := now.Format(time.RFC3339)
+	i, err := s.Update(i.ID, i.Version, Mutation{ReviewAt: &due}, "operator", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnqueueDue(now, "https://alerts.example/"); err != nil {
+		t.Fatal(err)
+	}
+	queued, err := s.PendingDeliveries(now)
+	if err != nil || len(queued) != 1 {
+		t.Fatalf("queued=%+v err=%v", queued, err)
+	}
+	owner := "platform"
+	i, err = s.Update(i.ID, i.Version, Mutation{Owner: &owner}, "operator", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, eligible, err := s.PrepareDelivery(queued[0].ID)
+	if err != nil || !eligible || prepared.Owner != owner || prepared.ID != queued[0].ID {
+		t.Fatalf("prepared=%+v eligible=%v err=%v", prepared, eligible, err)
+	}
+	if queued[0].Owner != "" {
+		t.Fatal("preparation mutated the queued snapshot")
+	}
+	prepared.Owner = "local edit"
+	again, eligible, err := s.PrepareDelivery(queued[0].ID)
+	if err != nil || !eligible || again.Owner != owner {
+		t.Fatalf("snapshot changed stored ownership: %+v %v", again, err)
+	}
+	later := now.Add(time.Hour).Format(time.RFC3339)
+	if _, err := s.Update(i.ID, i.Version, Mutation{ReviewAt: &later}, "operator", now); err != nil {
+		t.Fatal(err)
+	}
+	_, eligible, err = s.PrepareDelivery(queued[0].ID)
+	if err != nil || eligible {
+		t.Fatalf("obsolete review eligible=%v err=%v", eligible, err)
+	}
+}

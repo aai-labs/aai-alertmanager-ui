@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/aai-labs/aai-alertmanager-ui/internal/incidents"
 )
 
 func (s *Server) deliverReviews(ctx context.Context, now time.Time) {
@@ -27,37 +29,53 @@ func (s *Server) deliverReviews(ctx context.Context, now time.Time) {
 		if ctx.Err() != nil {
 			return
 		}
-		current, e := s.store.DeliveryCurrent(d.ID)
-		if e != nil || !current {
+		current, eligible, err := s.store.PrepareDelivery(d.ID)
+		if err != nil {
+			s.logger.Error("review delivery preparation failed")
 			continue
 		}
-		incident, err := s.store.Get(d.IncidentID)
-		if err != nil || incident.ClosedAt != nil {
+		if !eligible {
 			continue
 		}
-		d.Owner, d.Urgency = incident.Owner, incident.Urgency
-		b, _ := json.Marshal(map[string]any{"eventId": d.ID, "type": "incident.review_due", "incidentId": d.IncidentID, "owner": d.Owner, "urgency": d.Urgency, "dueAt": d.DueAt, "link": d.Link})
-		req, e := http.NewRequestWithContext(ctx, "POST", s.config.FollowUp.URL, bytes.NewReader(b))
-		if e != nil {
-			continue
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+s.webhookToken)
-		req.Header.Set("Idempotency-Key", d.ID)
-		resp, e := client.Do(req)
-		accepted := false
-		message := "webhook unavailable"
-		if e == nil {
-			accepted = resp.StatusCode >= 200 && resp.StatusCode < 300
-			message = "webhook rejected delivery"
-			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-			_ = resp.Body.Close()
-		}
-		if accepted {
-			message = "webhook accepted"
-		}
+		accepted, message := s.sendReview(ctx, client, current)
 		if e = s.store.CompleteDelivery(d.ID, accepted, message, time.Now().UTC()); e != nil {
 			s.logger.Error("review delivery state update failed")
 		}
 	}
+}
+
+// reviewEvent is the public webhook contract, separate from stored delivery state.
+type reviewEvent struct {
+	EventID    string    `json:"eventId"`
+	Type       string    `json:"type"`
+	IncidentID string    `json:"incidentId"`
+	Owner      string    `json:"owner"`
+	Urgency    string    `json:"urgency"`
+	DueAt      time.Time `json:"dueAt"`
+	Link       string    `json:"link"`
+}
+
+func (s *Server) sendReview(ctx context.Context, client *http.Client, d incidents.Delivery) (bool, string) {
+	payload := reviewEvent{EventID: d.ID, Type: "incident.review_due", IncidentID: d.IncidentID, Owner: d.Owner, Urgency: d.Urgency, DueAt: d.DueAt, Link: d.Link}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return false, "webhook payload invalid"
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", s.config.FollowUp.URL, bytes.NewReader(body))
+	if err != nil {
+		return false, "webhook request invalid"
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.webhookToken)
+	req.Header.Set("Idempotency-Key", d.ID)
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, "webhook unavailable"
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return false, "webhook rejected delivery"
+	}
+	return true, "webhook accepted"
 }

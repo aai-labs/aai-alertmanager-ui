@@ -205,7 +205,7 @@ func (s *Store) RetryDelivery(identity string, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	if i.ClosedAt != nil || i.ReviewAt == nil || i.ReviewRevision != d.Revision {
+	if !i.hasCurrentReview(d.Revision) {
 		return errors.New("review is no longer current")
 	}
 	now = now.UTC()
@@ -220,11 +220,39 @@ func (s *Store) RetryDelivery(identity string, now time.Time) error {
 	return tx.Commit()
 }
 
-// DeliveryCurrent guards queued work immediately before network delivery.
-func (s *Store) DeliveryCurrent(identity string) (bool, error) {
+// PrepareDelivery returns an independently owned snapshot of current review work.
+// The caller must send it promptly; a review can still change while HTTP is in flight.
+func (s *Store) PrepareDelivery(identity string) (Delivery, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Delivery{}, false, err
+	}
+	defer tx.Rollback()
+	var body []byte
 	var status string
-	err := s.db.QueryRow("SELECT status FROM outbox WHERE id=?", identity).Scan(&status)
-	return status == "pending", err
+	if err := tx.QueryRow("SELECT body,status FROM outbox WHERE id=?", identity).Scan(&body, &status); err != nil {
+		return Delivery{}, false, err
+	}
+	if status != "pending" {
+		return Delivery{}, false, nil
+	}
+	var d Delivery
+	if err := json.Unmarshal(body, &d); err != nil {
+		return Delivery{}, false, err
+	}
+	i, err := get(tx, d.IncidentID)
+	if err != nil {
+		return Delivery{}, false, err
+	}
+	if !i.hasCurrentReview(d.Revision) {
+		return Delivery{}, false, nil
+	}
+	d.Owner, d.Urgency = i.Owner, i.Urgency
+	return d, true, nil
+}
+
+func (i Incident) hasCurrentReview(revision int64) bool {
+	return i.ClosedAt == nil && i.ReviewAt != nil && i.ReviewRevision == revision
 }

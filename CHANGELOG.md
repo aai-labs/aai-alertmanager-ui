@@ -13,7 +13,14 @@
 
 ### Changed
 
+- Centralized review-delivery eligibility in the incident store and separated the typed webhook transport from workflow orchestration.
+
 - Clear loading, empty, failure, and partial-data states; dated heatmap columns and local quota filters.
 - Portable source-coverage detection, bounded collector caches, and conservative interpretation of probes, endpoints, and missing limits.
+
+### Fixed
+
+- Tenant incident projections no longer mutate shared member data.
+- Late incident responses cannot replace a newer selection or reopen a closed detail dialog; detail failures are separate from list freshness.
 
 Released artifacts remain documented in README; these entries do not imply a published image or production rollout.
