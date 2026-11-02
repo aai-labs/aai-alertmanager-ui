@@ -47,3 +47,17 @@ If the UI fails, revert its ingress route or Helm release. Alertmanager continue
 The downloadable `image-linux-amd64.spdx.json` describes the locally scanned Linux amd64 image. The published multiarch image also carries BuildKit-generated SBOM and provenance attestations for its platform builds.
 
 The workflow publishes packages before creating the draft release. Running it is the publication action; creating a tag alone does not publish packages. It intentionally does not deploy to a cluster. If publication partially succeeds, inspect the completed steps before rerunning; never overwrite a version already consumed by users with different content.
+
+## Enhanced workspace preview
+
+`deploy/cluster-preview-values.yaml` supplies this cluster's monitoring service names, a single replica, a persistent volume, and read-only mode with ingress disabled. Use it only with a newly published version containing enhanced mode; `v0.1.0` does not.
+
+Render for review before deployment (from this UI repository, after setting `RELEASE_VERSION` to the new published semver):
+
+```bash
+helm template alerts-preview charts/aai-alertmanager-ui \
+  --namespace monitoring -f deploy/cluster-preview-values.yaml \
+  --set-string image.tag="${RELEASE_VERSION:?Set the newly published release version}"
+```
+
+Production installation is an operator action and should be incorporated into the infrastructure repository's existing Helmfile workflow. Do not expose a second unprotected ingress. Validate analytics coverage and first-observed incident ages before enabling workflow writes. Jev and webhook settings are intentionally absent from the preview values; add their secret-backed configuration only after review.

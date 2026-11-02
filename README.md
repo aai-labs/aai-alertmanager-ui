@@ -151,7 +151,37 @@ Tenant access is enforced on the server. Simply selecting a namespace in operato
 
 The integration suite exercises actual **Alertmanager 0.27.0 and 0.34.1**, including silence changes and subpath hosting. These are tested endpoints of the compatibility matrix, not a claim that every intermediate version has been tested. [Read the compatibility report](docs/compatibility.md).
 
-The first release connects to one Alertmanager and optionally one Prometheus. It has no persistent incident history, automatic remediation, multi-cluster aggregation, or built-in identity provider. Alerts and silences remain owned by the upstream systems.
+The published first release connects to one Alertmanager and optionally one Prometheus. The next-version source adds optional persistent incident workflows described below. Automatic remediation, multi-cluster aggregation, and a built-in identity provider remain outside scope. Alerts and silences remain owned by the upstream systems.
+
+## Analytics, resources, and incident follow-through
+
+The next-version source includes **namespace analytics** from Prometheus: compare firing time and recurring episodes over seven or thirty days, with missing coverage shown explicitly.
+
+**Cluster overview, Resources, and Workloads** connect alert history with CPU and memory demand, storage consumption, pod readiness, scheduling, and controller replicas. Keep the full alert heatmap and incident inbox while investigating what is under pressure. These views use existing Prometheus metrics and require no Kubernetes API permissions. Missing observations remain unknown. [Metrics and interpretation →](docs/resources-and-workloads.md)
+
+Optional **enhanced mode** adds an incident inbox backed by SQLite: track owners, acknowledgements, overdue reviews, and recurring conditions. Optional Jev evaluation proposes grouping and urgency; optional webhooks deliver scheduled review events. Existing Alertmanager paging stays independent.
+
+These additions are available from source and are not included in the published `v0.1.0` image above. [Setup, data boundaries, APIs, and backup instructions →](docs/enhanced-mode.md)
+
+![Namespace analytics with firing-time heatmap and recurrence charts](docs/images/analytics.png)
+
+<details>
+<summary><strong>Connect alert history with resource and workload context</strong></summary>
+
+![Cluster overview showing resource trends, pod states, and namespace alert history using synthetic data](docs/images/cluster-overview.png)
+
+CPU, memory, and workload observations alongside the existing alert analytics. Synthetic demo data.
+
+</details>
+
+<details>
+<summary><strong>Track unresolved work across namespaces</strong></summary>
+
+![Incident workspace showing urgent cards and compact unresolved rows](docs/images/incidents.png)
+
+Synthetic data from the running application. Ownership, incident age, and scheduled review times are distinct from source severity.
+
+</details>
 
 ## Build with us
 

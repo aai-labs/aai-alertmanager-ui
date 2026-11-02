@@ -30,6 +30,7 @@ func testServer(t *testing.T, c config.Config, upstream http.HandlerFunc) *Serve
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = s.Close() })
 	return s
 }
 func request(s *Server, method, path, body, user, remote string) *httptest.ResponseRecorder {

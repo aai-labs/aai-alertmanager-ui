@@ -48,6 +48,8 @@ jobs:
           (cd web && npm audit --audit-level=high)
           make build
           make helm-check
+          python3 scripts/enhanced-smoke.py --binary .build/alertmanager-ui
+          helm template alerts charts/aai-alertmanager-ui --set alertmanager.url=http://alertmanager:9093 --set enhanced.enabled=true > /dev/null
           python3 scripts/compatibility.py --binary .build/alertmanager-ui --versions 0.27.0 0.34.1
       - name: Browser interaction tests
         working-directory: web

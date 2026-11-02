@@ -43,6 +43,8 @@ jobs:
           go vet ./...
           mkdir -p .build
           CGO_ENABLED=0 go build -trimpath -o .build/alertmanager-ui ./cmd/alertmanager-ui
+      - name: Persistent workspace smoke test
+        run: python3 scripts/enhanced-smoke.py --binary .build/alertmanager-ui
       - name: Browser interaction tests
         working-directory: web
         run: |
@@ -51,6 +53,8 @@ jobs:
       - name: Chart validation
         run: |
           make helm-check
+          helm template alerts charts/aai-alertmanager-ui --set alertmanager.url=http://alertmanager:9093 --set enhanced.enabled=true > /dev/null
+          if helm template alerts charts/aai-alertmanager-ui --set alertmanager.url=http://alertmanager:9093 --set enhanced.enabled=true --set replicaCount=2; then exit 1; fi
           helm template alerts charts/aai-alertmanager-ui --set alertmanager.url=http://alertmanager:9093 --set ingress.enabled=true --set ingress.host=alerts.example.com --set config.existingSecret=alerts-config > /dev/null
       - name: Real Alertmanager compatibility
         run: python3 scripts/compatibility.py --binary .build/alertmanager-ui --versions 0.27.0 0.34.1

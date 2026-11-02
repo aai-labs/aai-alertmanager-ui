@@ -3,6 +3,23 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { createServer } from "node:net";
+
+async function availablePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("No ephemeral port allocated");
+  const port = address.port;
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
+  return port;
+}
 
 test("browser manages a silence through real Alertmanager", async ({
   page,
@@ -66,20 +83,22 @@ test("browser manages a silence through real Alertmanager", async ({
         },
       ],
     });
+    const appPort = await availablePort();
     app = spawn(resolve("../.build/alertmanager-ui"), [], {
       env: {
         ...process.env,
         CONFIG_FILE: "",
         DEMO: "false",
+        ENHANCED: "false",
         READ_ONLY: "false",
         BASE_PATH: "",
         PROMETHEUS_URL: "",
         ALERTMANAGER_URL: upstream,
-        LISTEN_ADDR: "127.0.0.1:18083",
+        LISTEN_ADDR: `127.0.0.1:${appPort}`,
       },
       stdio: "ignore",
     });
-    const base = "http://127.0.0.1:18083";
+    const base = `http://127.0.0.1:${appPort}`;
     await expect
       .poll(async () => {
         try {

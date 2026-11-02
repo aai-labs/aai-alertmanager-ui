@@ -1,3 +1,4 @@
+import DataState from "./DataState";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import {
@@ -20,13 +21,27 @@ import {
   type Silence,
 } from "./model";
 import SilenceEditor from "./SilenceEditor";
+import Analytics from "./Analytics";
+import IncidentWorkspace from "./IncidentWorkspace";
+import ClusterWorkspace from "./ClusterWorkspace";
 
 export default function App() {
   const params = new URLSearchParams(location.search);
   const [view, setView] = useState(
-    ["focus", "all", "silences"].includes(params.get("view") || "")
-      ? params.get("view")!
-      : "focus",
+    params.get("incident")
+      ? "incidents"
+      : [
+            "focus",
+            "all",
+            "silences",
+            "analytics",
+            "incidents",
+            "overview",
+            "resources",
+            "workloads",
+          ].includes(params.get("view") || "")
+        ? params.get("view")!
+        : "focus",
   );
   const [namespace, setNamespace] = useState(params.get("namespace") || "");
   const [query, setQuery] = useState(params.get("q") || "");
@@ -57,6 +72,13 @@ export default function App() {
         setSilences([]);
         setLast(undefined);
         identity.current = key;
+        if (
+          ctx.incidentsEnabled &&
+          !ctx.demo &&
+          !new URLSearchParams(location.search).has("view") &&
+          !new URLSearchParams(location.search).has("incident")
+        )
+          setView("incidents");
       }
       setContext(ctx);
       if (ctx.tenantMode)
@@ -107,6 +129,13 @@ export default function App() {
   useEffect(() => {
     const p = new URLSearchParams();
     if (view !== "focus") p.set("view", view);
+    const incidentId = new URLSearchParams(location.search).get("incident");
+    if (incidentId && view === "incidents") p.set("incident", incidentId);
+    const workloadState = new URLSearchParams(location.search).get(
+      "workloadState",
+    );
+    if (workloadState && view === "workloads")
+      p.set("workloadState", workloadState);
     if (namespace) p.set("namespace", namespace);
     if (query) p.set("q", query);
     history.replaceState(
@@ -206,8 +235,17 @@ export default function App() {
       )}
       <nav className="tabs" aria-label="Views">
         {[
+          ...(context?.incidentsEnabled
+            ? [["incidents", "Incident inbox"]]
+            : []),
           ["focus", "Needs attention"],
           ["all", "All alerts"],
+          ...(context?.analyticsEnabled ? [["analytics", "Analytics"]] : []),
+          ...(context?.resourcesEnabled && context?.workloadsEnabled
+            ? [["overview", "Cluster overview"]]
+            : []),
+          ...(context?.resourcesEnabled ? [["resources", "Resources"]] : []),
+          ...(context?.workloadsEnabled ? [["workloads", "Workloads"]] : []),
           ...(!context?.tenantMode ? [["silences", "Silences"]] : []),
         ].map(([id, label]) => (
           <button
@@ -216,37 +254,98 @@ export default function App() {
             onClick={() => setView(id)}
           >
             {label}
-            <span>
-              {id === "silences"
-                ? silences.filter((s) => s.status?.state === "active").length
-                : id === "all"
-                  ? all.length
-                  : all.filter((a) => a.primary).length}
-            </span>
+            {["focus", "all", "silences"].includes(id) && (
+              <span>
+                {!last
+                  ? "—"
+                  : id === "silences"
+                    ? silences.filter((s) => s.status?.state === "active")
+                        .length
+                    : id === "all"
+                      ? all.length
+                      : all.filter((a) => a.primary).length}
+              </span>
+            )}
           </button>
         ))}
       </nav>
-      {view !== "silences" ? (
+      {!context ? (
+        <DataState
+          loading={!error}
+          label={error ? "Application unavailable" : "Loading application…"}
+          detail={error ? "Use Refresh to try again." : undefined}
+        />
+      ) : !last && busy && ["focus", "all", "silences"].includes(view) ? (
+        <DataState
+          loading
+          label={view === "silences" ? "Loading silences…" : "Loading alerts…"}
+        />
+      ) : view === "overview" ||
+        view === "resources" ||
+        view === "workloads" ? (
+        context &&
+        ((view === "workloads" && context.workloadsEnabled) ||
+          (view !== "workloads" && context.resourcesEnabled)) ? (
+          <ClusterWorkspace
+            key={JSON.stringify([context.identity, context.namespaces])}
+            mode={view}
+            context={context}
+            namespace={namespace}
+            setNamespace={setNamespace}
+            query={query}
+            setQuery={setQuery}
+            alerts={alerts}
+            alertsStale={!!error || !last}
+          />
+        ) : (
+          <div className="empty">
+            Resource and workload context requires a configured Prometheus
+            source.
+          </div>
+        )
+      ) : view === "analytics" ? (
+        context?.analyticsEnabled ? (
+          <Analytics
+            key={JSON.stringify([context.identity, context.namespaces])}
+            context={context}
+          />
+        ) : (
+          <div className="empty">
+            Analytics requires a configured Prometheus source.
+          </div>
+        )
+      ) : view === "incidents" ? (
+        context?.incidentsEnabled ? (
+          <IncidentWorkspace
+            key={JSON.stringify([context.identity, context.namespaces])}
+            context={context}
+          />
+        ) : (
+          <div className="empty">
+            Incident workspace requires enhanced mode.
+          </div>
+        )
+      ) : view !== "silences" ? (
         <>
           <section className="overview" aria-label="Alert counts">
             <div className={critical ? "stat critical-stat" : "stat"}>
               <span>Active critical</span>
               <strong>
-                {critical}
+                {last ? critical : "—"}
                 <small>alerts</small>
               </strong>
             </div>
             <div className="stat">
               <span>Needs attention</span>
               <strong>
-                {primary.length}
+                {last ? primary.length : "—"}
                 <small>alerts</small>
               </strong>
             </div>
             <div className="stat">
               <span>Suppressed</span>
               <strong>
-                {suppressed.length}
+                {last ? suppressed.length : "—"}
                 <small>alerts</small>
               </strong>
             </div>
@@ -495,7 +594,9 @@ export default function App() {
           Alertmanager UI ·{" "}
           {context?.tenantMode
             ? "Namespace access enforced by server"
-            : "Deterministic priorities · no AI"}
+            : context?.triageEnabled
+              ? "Optional model-assisted triage · source alerts preserved"
+              : "Deterministic priorities · no AI"}
         </span>
         <span>Refreshes every 30 seconds</span>
       </footer>

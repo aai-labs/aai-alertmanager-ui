@@ -39,3 +39,32 @@ func TestValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestEnhancedConfigurationBoundaries(t *testing.T) {
+	base := Config{Alertmanager: Source{URL: "http://alertmanager:9093"}, ListenAddr: ":8080"}
+	base.Defaults()
+	for _, change := range []func(*Config){
+		func(c *Config) { c.Triage.Enabled = true; c.Triage.APIKeyFile = "key" },
+		func(c *Config) { c.Enhanced.Enabled = true; c.Triage.Enabled = true },
+		func(c *Config) {
+			c.Enhanced.Enabled = true
+			c.Triage.Enabled = true
+			c.Triage.APIKeyFile = "key"
+			c.Triage.Model = "jev-latest"
+		},
+		func(c *Config) {
+			c.Enhanced.Enabled = true
+			c.FollowUp = FollowUp{URL: "http://hooks.example", PublicURL: "https://alerts.example", BearerTokenFile: "key"}
+		},
+		func(c *Config) {
+			c.Enhanced.Enabled = true
+			c.FollowUp = FollowUp{URL: "https://hooks.example", PublicURL: "https://alerts.example"}
+		},
+	} {
+		c := base
+		change(&c)
+		if c.Validate() == nil {
+			t.Fatal("invalid enhanced config accepted")
+		}
+	}
+}
