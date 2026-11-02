@@ -431,3 +431,170 @@ test("long unresolved queues collapse by namespace while urgent incidents stay v
     page.getByRole("heading", { name: "Namespace issue 0", exact: true }),
   ).toBeVisible();
 });
+
+test("the most recently selected incident wins when detail responses arrive out of order", async ({
+  page,
+}) => {
+  await base(page);
+  const older = {
+    ...incident,
+    id: "slow-incident",
+    title: "Earlier selection",
+  };
+  const newer = {
+    ...incident,
+    id: "latest-incident",
+    title: "Latest selection",
+  };
+  await page.route("**/api/incidents?*", (r) =>
+    r.fulfill({
+      json: {
+        incidents: [older, newer],
+        source: { state: "connected" },
+        readOnly: false,
+        total: 2,
+        limit: 200,
+        offset: 0,
+      },
+    }),
+  );
+  let release!: () => void;
+  const delayed = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/incidents/slow-incident", async (r) => {
+    await delayed;
+    await r.fulfill({ json: older });
+  });
+  await page.route("**/api/incidents/latest-incident", (r) =>
+    r.fulfill({ json: newer }),
+  );
+  await page.goto("/?view=incidents");
+  const slowRequest = page.waitForRequest((r) =>
+    r.url().endsWith("/api/incidents/slow-incident"),
+  );
+  await page
+    .locator("article")
+    .filter({ hasText: "Earlier selection" })
+    .getByRole("button", { name: "Investigate →" })
+    .click();
+  await slowRequest;
+  await page
+    .locator("article")
+    .filter({ hasText: "Latest selection" })
+    .getByRole("button", { name: "Investigate →" })
+    .click();
+  await expect(
+    page
+      .getByRole("dialog")
+      .getByRole("heading", { name: "Latest selection", exact: true }),
+  ).toBeVisible();
+  const slowResponse = page.waitForResponse((r) =>
+    r.url().endsWith("/api/incidents/slow-incident"),
+  );
+  release();
+  await slowResponse;
+  // Flush queued response handling and React rendering, without a timing sleep.
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  await expect(
+    page
+      .getByRole("dialog")
+      .getByRole("heading", { name: "Latest selection", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("dialog")
+      .getByRole("heading", { name: "Earlier selection", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("saving an incident does not reopen its closed dialog", async ({
+  page,
+}) => {
+  await base(page);
+  await page.route("**/api/incidents?*", (r) =>
+    r.fulfill({
+      json: {
+        incidents: [incident],
+        source: { state: "connected" },
+        readOnly: false,
+        total: 1,
+      },
+    }),
+  );
+  let release!: () => void;
+  const delayed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/incidents/case-1", async (r) => {
+    if (r.request().method() === "PATCH") {
+      await delayed;
+      await r.fulfill({ json: { ...incident, owner: "Platform", version: 2 } });
+    } else await r.fulfill({ json: incident });
+  });
+  await page.goto("/?view=incidents");
+  await page.getByRole("button", { name: "Investigate →" }).click();
+  await page.getByRole("button", { name: "Response", exact: true }).click();
+  await page.getByLabel("Owner", { exact: true }).fill("Platform");
+  const request = page.waitForRequest((r) => r.method() === "PATCH");
+  await page.getByRole("button", { name: "Save follow-up" }).click();
+  await request;
+  await page
+    .getByRole("button", { name: "Close incident", exact: true })
+    .click();
+  release();
+  await expect(
+    page.getByText(
+      "Incident updated. Existing Alertmanager notifications are unchanged.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("incident detail failure preserves the list and retry opens the incident", async ({
+  page,
+}) => {
+  await base(page);
+  await page.route("**/api/incidents?*", (r) =>
+    r.fulfill({
+      json: {
+        incidents: [incident],
+        source: { state: "connected" },
+        readOnly: false,
+        total: 1,
+      },
+    }),
+  );
+  let failDetail = true;
+  await page.route("**/api/incidents/case-1", (r) =>
+    failDetail
+      ? r.fulfill({ status: 502, json: { error: "Detail source unavailable" } })
+      : r.fulfill({ json: incident }),
+  );
+  await page.goto("/?view=incidents");
+  await page.getByRole("button", { name: "Investigate →" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Cannot load incident details",
+  );
+  await expect(page.getByRole("alert")).toContainText(
+    "Detail source unavailable",
+  );
+  await expect(
+    page.getByText("Incident data is stale", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: incident.title, exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  failDetail = false;
+  await page.getByRole("button", { name: "Investigate →" }).click();
+  await expect(
+    page
+      .getByRole("dialog")
+      .getByRole("heading", { name: incident.title, exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});

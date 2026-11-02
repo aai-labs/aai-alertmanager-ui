@@ -19,7 +19,10 @@ func TestReviewReadOnlyDoesNotDispatchWebhook(t *testing.T) {
 	if err := s.store.Observe([]incidents.Member{{Fingerprint: "a", Labels: map[string]string{"namespace": "alpha", "alertname": "Broken"}}}, now); err != nil {
 		t.Fatal(err)
 	}
-	list, _ := s.store.List()
+	list, err := s.store.List()
+	if err != nil || len(list) != 1 {
+		t.Fatalf("list incidents: %v, %v", list, err)
+	}
 	due := now.Add(-time.Minute).Format(time.RFC3339)
 	if _, err := s.store.Update(list[0].ID, list[0].Version, incidents.Mutation{ReviewAt: &due}, "operator", now); err != nil {
 		t.Fatal(err)
@@ -41,7 +44,10 @@ func TestReviewTenantCannotReadModelOrWriteWorkflow(t *testing.T) {
 	if err := s.store.Observe([]incidents.Member{{Fingerprint: "a", Labels: map[string]string{"namespace": "alpha", "alertname": "Broken"}, Status: map[string]any{"state": "suppressed", "silencedBy": []string{"private-silence"}}}}, now); err != nil {
 		t.Fatal(err)
 	}
-	list, _ := s.store.List()
+	list, err := s.store.List()
+	if err != nil || len(list) != 1 {
+		t.Fatalf("list incidents: %v, %v", list, err)
+	}
 	i := list[0]
 	d := incidents.Decision{InputHash: "test-hash", IncidentID: i.ID, Model: "jev", PolicyVersion: "1", Decisions: json.RawMessage(`{"related":{"choice":"secret-other-namespace-incident"}}`), CreatedAt: now}
 	if err := s.store.ApplyTriage(i.ID, i.Version, "today", "team", "runbook", d, now); err != nil {
@@ -50,6 +56,20 @@ func TestReviewTenantCannotReadModelOrWriteWorkflow(t *testing.T) {
 	tenant := access{identity: "tenant", namespaces: map[string]bool{"alpha": true}}
 	w := httptest.NewRecorder()
 	s.incidentAPI(w, httptest.NewRequest("GET", "/", nil), tenant, "/api/incidents/"+i.ID)
+	if w.Code != http.StatusOK {
+		t.Fatalf("tenant detail: %d %s", w.Code, w.Body.String())
+	}
+	var visible incidents.Incident
+	if err := json.Unmarshal(w.Body.Bytes(), &visible); err != nil {
+		t.Fatal(err)
+	}
+	if visible.ID != i.ID || len(visible.Members) != 1 || visible.Members[0].Status["state"] != "suppressed" {
+		t.Fatalf("tenant lost authorized evidence: %+v", visible)
+	}
+	before, err := s.store.Get(i.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, private := range []string{"secret-other-namespace-incident", "test-hash", "private-silence", "triage_applied"} {
 		if strings.Contains(w.Body.String(), private) {
 			t.Errorf("tenant detail leaked %s", private)
@@ -73,13 +93,25 @@ func TestReviewTenantCannotReadModelOrWriteWorkflow(t *testing.T) {
 		if w.Code != 403 {
 			t.Errorf("unauthorized workflow write: %d", w.Code)
 		}
+		after, err := s.store.Get(i.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after.Version != before.Version || after.Owner != before.Owner || len(after.Timeline) != len(before.Timeline) {
+			t.Fatalf("rejected write changed workflow: before=%+v after=%+v", before, after)
+		}
 	}
 }
 func TestReviewCrossOriginWorkflowRejected(t *testing.T) {
 	s := workflowTestServer(t)
 	now := time.Now().UTC()
-	s.store.Observe([]incidents.Member{{Fingerprint: "a", Labels: map[string]string{"namespace": "a", "alertname": "Broken"}}}, now)
-	list, _ := s.store.List()
+	if err := s.store.Observe([]incidents.Member{{Fingerprint: "a", Labels: map[string]string{"namespace": "a", "alertname": "Broken"}}}, now); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.store.List()
+	if err != nil || len(list) != 1 {
+		t.Fatalf("list incidents: %v, %v", list, err)
+	}
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("PATCH", "http://alerts.example/api/incidents/"+list[0].ID, bytes.NewBufferString(`{"version":1,"owner":"attacker"}`))
 	r.Header.Set("Content-Type", "application/json")
@@ -87,5 +119,12 @@ func TestReviewCrossOriginWorkflowRejected(t *testing.T) {
 	s.incidentAPI(w, r, access{operator: true, identity: "operator"}, "/api/incidents/"+list[0].ID)
 	if w.Code != 403 {
 		t.Fatalf("cross-origin mutation status %d", w.Code)
+	}
+	after, err := s.store.Get(list[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Owner != list[0].Owner || after.Version != list[0].Version {
+		t.Fatalf("cross-origin write changed incident: %+v", after)
 	}
 }

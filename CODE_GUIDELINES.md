@@ -2,6 +2,14 @@
 
 Adapted from the installed ai-starter baseline for this Go application. User instructions take precedence; MUST denotes an invariant and SHOULD a default.
 
+## Design principles retained from ai-starter
+
+- **Immutability and ownership** — prefer transform-and-return and immutable snapshots. In Go, copying a struct does not copy its maps, slices, or pointed-to values; copy mutable data when crossing ownership boundaries. Keep necessary mutation local, with explicit ownership, synchronization, or transactions. React state must be updated immutably.
+- **Composition and structure** — organize behavior around a feature or domain responsibility. Prefer small public interfaces with useful internal behavior over inheritance, generic manager/util dumping grounds, pass-through layers, or one abstraction per table. Keep dependency direction clear; avoid leaking transport or persistence mechanics into domain rules.
+- **Encapsulated invariants** — put transitions and constraints with the state they govern. Use domain vocabulary, typed records, and named predicates. Parse untrusted inputs into meaningful types at boundaries; represent unknown values explicitly rather than inventing defaults. Do not force classes or a new framework to express these ideas.
+- **Simple control flow** — favor guard clauses, linear orchestration, and explicit dependencies. Separate calculations from I/O where useful. Extract cohesive responsibilities when functions mix abstraction levels; do not split code merely to meet a line or parameter count.
+- **Controlled complexity** — notice change amplification, hidden coupling, and excessive cognitive load. Compare alternatives for consequential changes, explain the trade-off, and refactor in small reversible steps protected by meaningful checks. Avoid speculative generality.
+
 ## Boundaries
 
 - Keep HTTP parsing, authorization, and response mapping in `internal/server`; persistence and workflow transitions belong in `internal/incidents`. Provider transport belongs in `internal/triage`; configuration parsing belongs in `internal/config`.

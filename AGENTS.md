@@ -14,6 +14,10 @@
 - **Data semantics** — missing metrics are unknown, not zero or healthy. Source severity, incident urgency, condition clearance, and workflow closure are distinct.
 - **Portability** — use the documented single-cluster boundary and standard exporter contracts. Do not assume our namespaces, Helm release name, Ceph installation, or scrape job names.
 
+## Retained starter principles
+
+Keep the original design intent when tailoring examples: explicit ownership and immutability, composition, cohesive feature/domain structure, encapsulated invariants, simple control flow, and behavior-focused testing. [CODE_GUIDELINES.md](CODE_GUIDELINES.md) and [TESTING.md](TESTING.md) explain how these apply to Go and React. Stack adaptation must not remove these principles.
+
 ## Work loop
 
 1. Read the task-relevant routes in [docs/INDEX.md](docs/INDEX.md), source, and tests. Explain the intended change before substantive work.

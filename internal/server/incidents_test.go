@@ -29,7 +29,10 @@ func TestIncidentScopeAndVersion(t *testing.T) {
 	if e := s.store.Observe([]incidents.Member{{Fingerprint: "a", Labels: map[string]string{"namespace": "alpha", "alertname": "Broken", "severity": "critical"}, Status: map[string]any{"state": "suppressed", "inhibitedBy": []string{"secret"}}}, {Fingerprint: "b", Labels: map[string]string{"namespace": "beta", "alertname": "Private"}}}, now); e != nil {
 		t.Fatal(e)
 	}
-	list, _ := s.store.List()
+	list, err := s.store.List()
+	if err != nil || len(list) == 0 {
+		t.Fatalf("list incidents: %v, %v", list, err)
+	}
 	var alpha, beta incidents.Incident
 	for _, i := range list {
 		if i.Namespace == "alpha" {
@@ -72,12 +75,24 @@ func TestIncidentScopeAndVersion(t *testing.T) {
 	if rr.Code != 409 {
 		t.Fatalf("stale edit got %d", rr.Code)
 	}
+	persisted, err := s.store.Get(alpha.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Owner != "Alice" || persisted.Version != alpha.Version+1 {
+		t.Fatalf("stale edit overwrote accepted update: %+v", persisted)
+	}
 }
-func TestFollowupDeliveryAndNoRedirect(t *testing.T) {
+func TestFollowupAcceptedDeliveryIsNotSentAgain(t *testing.T) {
 	s := workflowTestServer(t)
 	now := time.Now()
-	_ = s.store.Observe([]incidents.Member{{Fingerprint: "a", Labels: map[string]string{"namespace": "alpha", "alertname": "Broken"}}}, now)
-	list, _ := s.store.List()
+	if err := s.store.Observe([]incidents.Member{{Fingerprint: "a", Labels: map[string]string{"namespace": "alpha", "alertname": "Broken"}}}, now); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.store.List()
+	if err != nil || len(list) == 0 {
+		t.Fatalf("list incidents: %v, %v", list, err)
+	}
 	due := now.Add(-time.Minute).Format(time.RFC3339)
 	_, e := s.store.Update(list[0].ID, list[0].Version, incidents.Mutation{ReviewAt: &due}, "operator", now)
 	if e != nil {
@@ -89,6 +104,19 @@ func TestFollowupDeliveryAndNoRedirect(t *testing.T) {
 		if r.Header.Get("Idempotency-Key") == "" || r.Header.Get("Authorization") != "Bearer test" {
 			t.Error("missing delivery authentication")
 		}
+		var payload struct {
+			EventID    string    `json:"eventId"`
+			Type       string    `json:"type"`
+			IncidentID string    `json:"incidentId"`
+			DueAt      time.Time `json:"dueAt"`
+			Link       string    `json:"link"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Error(err)
+		}
+		if payload.EventID != r.Header.Get("Idempotency-Key") || payload.Type != "incident.review_due" || payload.IncidentID != list[0].ID || !payload.DueAt.Equal(now.Add(-time.Minute).Truncate(time.Second)) || payload.Link == "" {
+			t.Errorf("invalid public review event: %+v", payload)
+		}
 		w.WriteHeader(204)
 	}))
 	defer srv.Close()
@@ -96,7 +124,10 @@ func TestFollowupDeliveryAndNoRedirect(t *testing.T) {
 	s.webhookToken = "test"
 	s.deliverReviews(t.Context(), now)
 	s.deliverReviews(t.Context(), now.Add(time.Minute))
-	d, _ := s.store.Deliveries(list[0].ID)
+	d, err := s.store.Deliveries(list[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if calls != 1 || len(d) != 1 || d[0].Status != "accepted" {
 		t.Fatalf("delivery %d %+v", calls, d)
 	}
@@ -116,7 +147,10 @@ func TestShadowDecisionReusedAndReadOnlyGated(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	list, _ := s.store.List()
+	list, err := s.store.List()
+	if err != nil || len(list) == 0 {
+		t.Fatalf("list incidents: %v, %v", list, err)
+	}
 	i := list[0]
 	_, _, hash, e := s.triageClient.Prepare(triage.Input{Incident: candidate(i), Candidates: []triage.Candidate{}})
 	if e != nil {
@@ -142,5 +176,67 @@ func TestShadowDecisionReusedAndReadOnlyGated(t *testing.T) {
 	usage, _ := s.store.Usage(now.Format("2006-01"))
 	if usage.Requests != 0 || usage.ReservedUSD != 0 {
 		t.Fatal("cached decision caused provider call")
+	}
+}
+
+func TestTenantProjectionDoesNotMutateOperatorSnapshot(t *testing.T) {
+	original := incidents.Incident{ID: "case", Namespace: "alpha", Members: []incidents.Member{{Labels: map[string]string{"namespace": "alpha"}, Annotations: map[string]string{"summary": "Observed condition"}, Status: map[string]any{"state": "suppressed", "inhibitedBy": []string{"operator-only"}}}}}
+	before, err := json.Marshal(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tenant := sanitizeIncident(original, access{namespaces: map[string]bool{"alpha": true}})
+	if len(tenant.Members[0].Status) != 1 || tenant.Members[0].Status["state"] != "suppressed" {
+		t.Fatal("tenant projection must retain only suppression state")
+	}
+	after, _ := json.Marshal(original)
+	if !bytes.Equal(before, after) {
+		t.Fatal("tenant projection changed the original operator snapshot")
+	}
+	tenant.Members[0].Labels["namespace"] = "changed"
+	tenant.Members[0].Annotations["summary"] = "changed"
+	if original.Members[0].Labels["namespace"] != "alpha" || original.Members[0].Annotations["summary"] != "Observed condition" {
+		t.Fatal("projected member maps share mutable ownership")
+	}
+}
+
+func TestFollowupRedirectDoesNotTransmitEventToAnotherEndpoint(t *testing.T) {
+	s := workflowTestServer(t)
+	now := time.Now().UTC()
+	if err := s.store.Observe([]incidents.Member{{Fingerprint: "a", Labels: map[string]string{"namespace": "alpha", "alertname": "Broken"}}}, now); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.store.List()
+	if err != nil || len(list) != 1 {
+		t.Fatalf("list incidents: %v, %v", list, err)
+	}
+	due := now.Add(-time.Minute).Format(time.RFC3339)
+	if _, err := s.store.Update(list[0].ID, list[0].Version, incidents.Mutation{ReviewAt: &due}, "operator", now); err != nil {
+		t.Fatal(err)
+	}
+	redirectedCalls := 0
+	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { redirectedCalls++; w.WriteHeader(http.StatusNoContent) }))
+	defer destination.Close()
+	originalCalls := 0
+	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		originalCalls++
+		if r.Header.Get("Authorization") != "Bearer test" {
+			t.Error("missing receiver authentication")
+		}
+		http.Redirect(w, r, destination.URL, http.StatusTemporaryRedirect)
+	}))
+	defer receiver.Close()
+	s.config.FollowUp = config.FollowUp{URL: receiver.URL, PublicURL: "https://alerts.example/"}
+	s.webhookToken = "test"
+	s.deliverReviews(t.Context(), now)
+	if originalCalls != 1 || redirectedCalls != 0 {
+		t.Fatalf("receiver calls=%d, redirect destination calls=%d", originalCalls, redirectedCalls)
+	}
+	deliveries, err := s.store.Deliveries(list[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deliveries) != 1 || deliveries[0].Status != "pending" || deliveries[0].Attempts != 1 {
+		t.Fatalf("redirect must remain unaccepted for retry: %+v", deliveries)
 	}
 }

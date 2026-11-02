@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -174,7 +176,10 @@ func sanitizeIncident(i incidents.Incident, a access) incidents.Incident {
 	i.Model = nil
 	// Audit details can contain model relationships or operator identities; tenants see state only.
 	i.Timeline = []incidents.Event{}
+	i.Members = slices.Clone(i.Members)
 	for n := range i.Members {
+		i.Members[n].Labels = maps.Clone(i.Members[n].Labels)
+		i.Members[n].Annotations = maps.Clone(i.Members[n].Annotations)
 		i.Members[n].Status = map[string]any{"state": i.Members[n].Status["state"]}
 	}
 	return i

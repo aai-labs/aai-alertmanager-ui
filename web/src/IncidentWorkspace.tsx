@@ -33,20 +33,34 @@ export default function IncidentWorkspace({ context }: { context: Context }) {
     ),
     [selected, setSelected] = useState<Incident>(),
     [notice, setNotice] = useState(""),
-    [opening, setOpening] = useState(false);
+    [opening, setOpening] = useState(false),
+    [detailError, setDetailError] = useState("");
   const lock = useRef(false);
   const loadedPages = useRef(1);
-  const deepLink = useRef(new URLSearchParams(location.search).get("incident"));
-  useEffect(() => {
-    const id = deepLink.current;
-    if (!id) return;
-    deepLink.current = null;
+  const detailRequest = useRef(0);
+  const openIncident = useCallback(async (id: string) => {
+    const request = ++detailRequest.current;
     setOpening(true);
-    void api<Incident>(`incidents/${encodeURIComponent(id)}`)
-      .then(setSelected)
-      .catch((e) => setError(e.message))
-      .finally(() => setOpening(false));
+    setDetailError("");
+    try {
+      const incident = await api<Incident>(
+        `incidents/${encodeURIComponent(id)}`,
+      );
+      if (request === detailRequest.current) setSelected(incident);
+    } catch (e) {
+      if (request === detailRequest.current)
+        setDetailError((e as Error).message);
+    } finally {
+      if (request === detailRequest.current) setOpening(false);
+    }
   }, []);
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get("incident");
+    if (id) void openIncident(id);
+    return () => {
+      detailRequest.current++;
+    };
+  }, [openIncident]);
   const refresh = useCallback(async () => {
     if (lock.current) return;
     lock.current = true;
@@ -125,19 +139,14 @@ export default function IncidentWorkspace({ context }: { context: Context }) {
       setBusy(false);
     }
   }
-  async function open(i: Incident) {
-    setOpening(true);
-    try {
-      setSelected(await api<Incident>(`incidents/${encodeURIComponent(i.id)}`));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setOpening(false);
-    }
-  }
   return (
     <section className="enhanced-workspace">
       {opening && <DataState loading label="Loading incident details…" />}
+      {detailError && (
+        <div role="alert" className="banner danger">
+          <strong>Cannot load incident details</strong> {detailError}
+        </div>
+      )}
       <div className="section-head">
         <div>
           <h2>What still needs attention.</h2>
@@ -300,7 +309,7 @@ export default function IncidentWorkspace({ context }: { context: Context }) {
                     </span>
                     <button
                       className="text-button"
-                      onClick={() => void open(i)}
+                      onClick={() => void openIncident(i.id)}
                     >
                       Investigate →
                     </button>
@@ -345,7 +354,10 @@ export default function IncidentWorkspace({ context }: { context: Context }) {
                         : "No review scheduled"}
                     </small>
                   </div>
-                  <button className="text-button" onClick={() => void open(i)}>
+                  <button
+                    className="text-button"
+                    onClick={() => void openIncident(i.id)}
+                  >
                     Investigate →
                   </button>
                 </>
@@ -426,18 +438,25 @@ export default function IncidentWorkspace({ context }: { context: Context }) {
       </p>
       {selected && (
         <IncidentDetail
+          key={selected.id}
           incident={selected}
           candidates={data?.incidents || []}
           readOnly={readOnly}
           followUp={!!context.followUpEnabled}
           onClose={() => {
+            detailRequest.current++;
+            setOpening(false);
             setSelected(undefined);
             const u = new URL(location.href);
             u.searchParams.delete("incident");
             history.replaceState(null, "", u.pathname + u.search);
           }}
           onSaved={(i) => {
-            setSelected(i);
+            setSelected((current) =>
+              current?.id === i.id && current.version <= i.version
+                ? i
+                : current,
+            );
             setNotice(
               "Incident updated. Existing Alertmanager notifications are unchanged.",
             );
